@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MuscleRivalsBackend")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b220008c8805f9e0e1729eae9aeb47ce312c2d22")]
 [assembly: System.Reflection.AssemblyProductAttribute("MuscleRivalsBackend")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MuscleRivalsBackend")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
