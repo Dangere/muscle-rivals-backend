@@ -1,0 +1,67 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
+using MuscleRivalsBackend.Enums;
+
+namespace MuscleRivalsBackend.Models.Entities;
+
+[Table("users", Schema = "public"), Index(nameof(Email)), Index(nameof(Username), IsUnique = true), Index(nameof(LastModifiedDate))]
+
+public class UserEntity
+{
+    public int Id { get; set; }
+    public required string Email { get; set; }
+    [Required]
+    public required string Username { get; set; }
+    [Required]
+    public required string FirstName { get; set; }
+    [Required]
+    public required string LastName { get; set; }
+    [Required]
+    public required string Hash { get; set; }
+    [Required]
+    public required string Salt { get; set; }
+    [Required]
+    public required UserRoles Role { get; set; } = UserRoles.User;
+
+    [Required]
+    public required bool IsVerified { get; set; } = false;
+
+    [Required]
+    public DateTime CreationDate { get; set; } = DateTime.UtcNow;
+    public DateTime LastModifiedDate { get; set; } = DateTime.UtcNow;
+
+    public string? ProfilePictureURL { get; set; } = null;
+
+    public bool IsDeleted { get; set; } = false;
+
+    // [Required]
+    // public required UserPreferences Preferences { get; set; } = null!;
+    public HashSet<RefreshTokenEntity> RefreshTokens { get; } = [];
+
+    public HashSet<VerificationTokenEntity> VerificationTokens { get; } = [];
+    public HashSet<PasswordResetTokenEntity> PasswordResetTokens { get; } = [];
+
+    // // This will navigate to user bug reports and error reports
+    // public HashSet<ReportEntity> Reports { get; } = [];
+
+
+    /// <summary>
+    ///     Creates a new UserEntity instance with the given parameters,
+    ///     Both email and username are converted to lowercase
+    /// </summary>
+    public static UserEntity CreateUser(string email, string username, string firstName, string lastName, string hash, string salt, UserRoles role, bool isVerified, string? profilePictureURL = null)
+        => new() { Email = email.ToLower(), Username = username.ToLower(), FirstName = firstName, LastName = lastName, Hash = hash, Salt = salt, Role = role, IsVerified = isVerified, ProfilePictureURL = String.IsNullOrEmpty(profilePictureURL) ? null : profilePictureURL };
+
+
+
+    public override bool Equals(object? obj)
+    {
+        return obj is UserEntity other && Id == other.Id && Email == other.Email && Username == other.Username;
+    }
+
+    public override int GetHashCode()
+    {
+        return Id.GetHashCode();
+    }
+}
