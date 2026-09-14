@@ -12,6 +12,8 @@ using MuscleRivalsBackend.Services;
 using MuscleRivalsBackend.Validators;
 using MuscleRivalsBackend.Hubs;
 using SharpGrip.FluentValidation.AutoValidation.Mvc.Extensions;
+using MuscleRivalsBackend.Workers;
+using MuscleRivalsBackend.Data.Lists;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,10 +32,20 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddScoped<IValidator<LoginRequestDTO>, LoginRequestDTOValidator>();
 builder.Services.AddScoped<IValidator<RegisterRequestDTO>, RegisterRequestDTOValidator>();
 builder.Services.AddScoped<IValidator<RegisterWithGoogleRequestDTO>, RegisterWithGoogleRequestDTOValidator>();
-
 builder.Services.AddScoped<UserMapper>();
-
 builder.Services.AddScoped<AuthService>();
+
+
+builder.Services.AddSingleton<MatchmakingRoomsList>();
+builder.Services.AddSingleton<MatchmakingQueueList>();
+builder.Services.AddSingleton<GameHubConnectionList>();
+builder.Services.AddSingleton<GameManager>();
+
+
+builder.Services.AddHostedService<MatchmakingBackgroundService>();
+
+
+
 
 builder.Services.AddDbContext<MuscleRivalsDBContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -66,7 +78,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
             // If the request is for our hub...
             var path = context.HttpContext.Request.Path;
             if (!string.IsNullOrEmpty(accessToken) &&
-                path.StartsWithSegments("/hubs/matchmaking"))
+                path.StartsWithSegments("/hubs/game"))
             {
                 // Read the token out of the query string
                 context.Token = accessToken;
@@ -156,9 +168,24 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
+// builder.Services.AddCors(options =>
+// {
+//     options.AddPolicy("cors-origin-policy",
+//         builder =>
+//         {
+//             builder.WithOrigins("").AllowAnyHeader()
+//                   .AllowAnyMethod()
+//                   .AllowCredentials();
+//         });
+// });
+
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+
 var app = builder.Build();
 
-app.UseCors("cors-origin-policy");
+// app.UseCors("cors-origin-policy");
 
 
 
@@ -187,6 +214,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapHub<MatchmakingHub>("/hubs/matchmaking");
+app.MapHub<GameHub>("/hubs/game");
+
 app.Run();
 

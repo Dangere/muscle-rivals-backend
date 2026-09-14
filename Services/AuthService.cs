@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using MuscleRivalsBackend.Data;
 using MuscleRivalsBackend.Enums;
@@ -87,13 +88,63 @@ public class AuthService(MuscleRivalsDBContext dbContext, TokenService tokenServ
 
     }
 
-    public async Task<Result<AuthenticationResponseDTO>> LoginWithGoogle(string googleToken)
+    // public async Task<Result<AuthenticationResponseDTO>> LoginWithGoogle(string googleToken)
+    // {
+    //     throw new NotImplementedException();
+    // }
+
+    public async Task<Result<TokensDTO>> RefreshToken(string expiredAccessToken, string refreshToken)
     {
-        throw new NotImplementedException();
+        ClaimsPrincipal claimsFromExpiredToken;
+
+        try
+        {
+            claimsFromExpiredToken = _tokenService.ExtractPrincipalFromToken(expiredAccessToken, false);
+
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Token validation failed.");
+            return Result<TokensDTO>.Error("Invalid refresh token.", ErrorCodes.INVALID_TOKEN, StatusCodes.Status401Unauthorized);
+
+
+        }
+
+        if (claimsFromExpiredToken.FindFirst(ClaimTypes.NameIdentifier) == null)
+            return Result<TokensDTO>.Error("Invalid refresh token.", ErrorCodes.INVALID_TOKEN, StatusCodes.Status401Unauthorized);
+
+
+        int userId = int.Parse(claimsFromExpiredToken.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        string? salt = await _dbContext.Users.Where(u => u.Id == userId && !u.IsDeleted).Select(u => u.Salt).FirstOrDefaultAsync();
+        if (salt == null)
+            return Result<TokensDTO>.Error("Invalid refresh token.", ErrorCodes.INVALID_TOKEN, StatusCodes.Status401Unauthorized);
+
+
+        // Recreate hashed refresh token
+        string hashedToken = Hashing.HashToken(refreshToken, salt);
+        // Validate refresh token
+        RefreshTokenEntity? existingRefreshToken = await _dbContext.RefreshTokens.AsTracking().Where(t => t.HashedToken == hashedToken && !t.IsRevoked && t.ExpiresAt > DateTime.UtcNow).FirstOrDefaultAsync();
+
+        // If the token is not found, it means its expired or didn't exist in th first place 
+        if (existingRefreshToken is null)
+            return Result<TokensDTO>.Error("Invalid refresh token.", ErrorCodes.INVALID_TOKEN, StatusCodes.Status401Unauthorized);
+
+
+        // We mark the refresh token as revoked as we gonna replace it
+        existingRefreshToken.IsRevoked = true;
+
+        // Generate refresh token, and store it hashed
+        RefreshTokenEntity refreshTokenEntity = _tokenService.GenerateRefreshToken(userId, salt, out string newRefreshToken);
+        await _dbContext.RefreshTokens.AddAsync(refreshTokenEntity);
+        await _dbContext.SaveChangesAsync();
+
+        // Generate access token
+        UserEntity user = await _dbContext.Users.FirstAsync(u => u.Id == userId);
+        string accessToken = _tokenService.GenerateAccessToken(user);
+
+        return Result<TokensDTO>.Success(new TokensDTO(accessToken, newRefreshToken));
+
+
+
     }
-
-
-
-
-
 }

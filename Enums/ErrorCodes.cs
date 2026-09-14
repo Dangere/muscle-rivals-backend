@@ -3,19 +3,8 @@ namespace MuscleRivalsBackend.Enums;
 
 public enum ErrorCodes
 {
-    // Group errors
-    GROUP_NOT_FOUND,
-    GROUP_DETAILS_UNCHANGED,
-
-    // Task errors
-    TASK_NOT_FOUND,
-    TASK_DETAILS_UNCHANGED,
-
-
     // Access / permission errors
     ACCESS_DENIED,
-    OWNER_CANNOT_PERFORM_ACTION,
-    SHARED_USER_CANNOT_PERFORM_ACTION,
 
     // User errors
     USER_NOT_FOUND,
@@ -39,4 +28,8 @@ public enum ErrorCodes
     // Server errors
     INTERNAL_ERROR,
     EMAIL_SEND_FAILED,
+
+    // Game errors
+    USER_NOT_IN_HUB,
+    USER_ALREADY_IN_ROOM,
 }

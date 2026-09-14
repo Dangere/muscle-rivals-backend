@@ -36,4 +36,17 @@ public class AuthController(AuthService authServer) : ControllerBase
         return Ok(result.Data);
 
     }
+
+    [AllowAnonymous, HttpPost("refresh-token")]
+    public async Task<IActionResult> RefreshToken([FromBody] TokensDTO tokens)
+    {
+
+        Result<TokensDTO> refreshTokenResult = await _authService.RefreshToken(expiredAccessToken: tokens.AccessToken, refreshToken: tokens.RefreshToken);
+
+        if (!refreshTokenResult.IsSuccess)
+            return this.ErrorResponse(refreshTokenResult);
+
+
+        return Ok(refreshTokenResult.Data);
+    }
 }
