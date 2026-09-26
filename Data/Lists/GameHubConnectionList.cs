@@ -8,21 +8,14 @@ namespace MuscleRivalsBackend.Data.Lists;
 
 public class GameHubConnectionList
 {
-    private readonly ConcurrentDictionary<int, (string ConnectionId, string DeviceId)> _connections = [];
+    private readonly ConcurrentDictionary<int, string> _connections = [];
 
-    internal void AddConnection(int userId, string connectionId, string deviceId)
+    internal void SetConnection(int userId, string connectionId)
     {
-
-        _connections.GetOrAdd(userId, _ => (connectionId, deviceId));
-
-        // if (!_connections.ContainsKey(userId))
-        //     _connections[userId] = [];
-
-        // _connections[userId].Add((connectionId, deviceId));
-
+        _connections.AddOrUpdate(userId, (k) => connectionId, (k, v) => connectionId);
     }
 
-    internal void RemoveConnection(int userId, string connectionId)
+    internal void RemoveConnections(int userId)
     {
 
         _connections.TryRemove(userId, out _);
@@ -38,7 +31,7 @@ public class GameHubConnectionList
     public string? GetConnection(int userId)
     {
 
-        return _connections.FirstOrDefault(c => c.Key == userId).Value.ConnectionId;
+        return _connections.FirstOrDefault(c => c.Key == userId).Value;
 
     }
 
@@ -56,5 +49,11 @@ public class GameHubConnectionList
 
         return _connections.Any(x => x.Key == userId);
 
+    }
+
+    internal bool UsersInHub(List<int> userIds)
+    {
+
+        return _connections.Any(x => userIds.Contains(x.Key));
     }
 }

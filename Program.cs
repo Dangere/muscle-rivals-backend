@@ -20,29 +20,35 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 // Adding services to the container.
 
-builder.Services.AddScoped<TokenService>();
 
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 
+// Validators
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
-// Validators
 builder.Services.AddScoped<IValidator<LoginRequestDTO>, LoginRequestDTOValidator>();
 builder.Services.AddScoped<IValidator<RegisterRequestDTO>, RegisterRequestDTOValidator>();
 builder.Services.AddScoped<IValidator<RegisterWithGoogleRequestDTO>, RegisterWithGoogleRequestDTOValidator>();
+
+
+builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<UserMapper>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<MatchmakingService>();
+builder.Services.AddScoped<UserService>();
 
 
-builder.Services.AddSingleton<MatchmakingRoomsList>();
+builder.Services.AddSingleton<RoomsList>();
 builder.Services.AddSingleton<MatchmakingQueueList>();
 builder.Services.AddSingleton<GameHubConnectionList>();
 builder.Services.AddSingleton<GameManager>();
 
 
 builder.Services.AddHostedService<MatchmakingBackgroundService>();
+builder.Services.AddHostedService<RoomLifetimeBackgroundService>();
+
 
 
 

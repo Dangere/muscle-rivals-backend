@@ -32,4 +32,5 @@ public enum ErrorCodes
     // Game errors
     USER_NOT_IN_HUB,
     USER_ALREADY_IN_ROOM,
+    USER_ALREADY_IN_QUEUE,
 }

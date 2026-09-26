@@ -12,34 +12,42 @@ namespace MuscleRivalsBackend.Hubs;
 /// <param name="logger"></param>
 /// <param name="inMemoryConnectionManager"></param>
 [AuthorizeRoles(UserRoles.User, UserRoles.Admin)]
-public class GameHub(ILogger<GameHub> logger, GameHubConnectionList inMemoryConnectionManager, GameManager gameManager) : Hub
+public class GameHub(ILogger<GameHub> logger, GameHubConnectionList inMemoryConnectionManager, GameManager gameManager, MatchmakingService matchmakingService) : Hub
 {
     private readonly ILogger<GameHub> _logger = logger;
     private readonly GameHubConnectionList _inMemoryConnectionManager = inMemoryConnectionManager;
 
-    private readonly Action<int, PlayerAction> _playerActionDelegate = gameManager.ClientAction;
+    private readonly Action<int, ClientAction> _playerActionDelegate = gameManager.ClientAction;
+    internal void OnUserDisconnect(int userId)
+    {
+        gameManager.ClientDisconnect(userId);
+        matchmakingService.LeaveQueue(userId);
 
+    }
 
     public override async Task OnConnectedAsync()
     {
         var deviceId = Context.GetHttpContext()?.Request.Query["deviceId"].ToString();
-        int userId = int.Parse(Context.User!.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        if (!int.TryParse(Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "fail", out int userId))
+        {
+            throw new HubException("User ID not found in token");
+        }
         _logger.LogInformation("A client has connected, UserId: {UserId} DeviceId: {DeviceId}", userId, deviceId);
 
-        // If user is already in hub we don't add another connection ID, as only one account can be in matchmaking hub at a time
+        // If user is already in hub we remove his initial connection id then add the new one after kicking him from any room
         if (_inMemoryConnectionManager.UserInHub(userId))
-        {
-            _logger.LogInformation("A client has tried to connect while already in hub, UserId: {UserId} DeviceId: {DeviceId}", userId, deviceId);
-            return;
-        }
-        _inMemoryConnectionManager.AddConnection(userId, Context.ConnectionId, deviceId ?? userId.ToString());
+            OnUserDisconnect(userId);
+
+        _inMemoryConnectionManager.SetConnection(userId, Context.ConnectionId);
         await base.OnConnectedAsync();
     }
 
     public override Task OnDisconnectedAsync(Exception? exception)
     {
         int userId = int.Parse(Context.User!.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        _inMemoryConnectionManager.RemoveConnection(userId, Context.ConnectionId);
+        _inMemoryConnectionManager.RemoveConnections(userId);
+
+        OnUserDisconnect(userId);
 
         return base.OnDisconnectedAsync(exception);
     }
@@ -51,17 +59,17 @@ public class GameHub(ILogger<GameHub> logger, GameHubConnectionList inMemoryConn
     public async Task CountRep()
     {
         int userId = int.Parse(Context.User!.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        _playerActionDelegate(userId, PlayerAction.countRep);
+        _playerActionDelegate(userId, ClientAction.CountRep);
     }
 
     /// <summary>
     ///     Server function called by the client to exit the room
     /// </summary>
     /// <returns></returns>
-    public async Task ExitRoom()
+    public async Task QuitMatch()
     {
         int userId = int.Parse(Context.User!.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        _playerActionDelegate(userId, PlayerAction.exitGame);
+        _playerActionDelegate(userId, ClientAction.QuitMatch);
     }
 
     /// <summary>
@@ -72,7 +80,7 @@ public class GameHub(ILogger<GameHub> logger, GameHubConnectionList inMemoryConn
     public async Task ReinitializeWebRTC()
     {
         int userId = int.Parse(Context.User!.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        _playerActionDelegate(userId, PlayerAction.reinitializeWebRTC);
+        _playerActionDelegate(userId, ClientAction.ReinitializeWebRTC);
 
     }
 
