@@ -1,8 +1,8 @@
 namespace MuscleRivalsBackend.Enums
 {
-    public enum GameMode
+    public enum GameModeType
     {
-        Timed,
+        TimeLimited,
         MaxReps
     }
 }

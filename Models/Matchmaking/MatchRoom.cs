@@ -1,27 +1,24 @@
 using System.Collections.ObjectModel;
 using MuscleRivalsBackend.Enums;
+using MuscleRivalsBackend.Models.DTOs.Game.Modes;
 
 namespace MuscleRivalsBackend.Models.Matchmaking;
 
-public class MatchRoom(int roomId, List<int> userIds, GameMode mode, ExerciseType exercise)
+public class MatchRoom(int roomId, List<int> userIds, BaseGameMode gameMode, ExerciseType exercise)
 {
     public int RoomId = roomId;
     public ReadOnlyCollection<int> UserIds { get; private set; } = userIds.AsReadOnly();
     public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
     public List<int> PlayerScores { get; private set; } = userIds.Select(x => 0).ToList();
 
-    public GameMode Mode { get; private set; } = mode;
     public ExerciseType Exercise { get; private set; } = exercise;
 
+    public BaseGameMode GameMode { get; private set; } = gameMode;
 
-
-
-    public readonly int MatchLengthMinutes = 1;
 
     // Keeps track of how many seconds were paused during the match to calculate the total time if the game mode is timed
     private int _pausedSeconds = 0;
 
-    private readonly int _matchMaxLifeTimInMinutes = 5;
 
     // Matches start paused for initialization
     private MatchState _state = MatchState.Paused;
@@ -51,27 +48,50 @@ public class MatchRoom(int roomId, List<int> userIds, GameMode mode, ExerciseTyp
     }
 
     /// <summary>
-    ///     Validates if the match can be concluded or not by a condition that depends on the game mode
+    ///     Checks a win condition based on the game mode and returns a userid or 0
     /// </summary>
     /// <returns></returns>
-    public bool ValidateMatchConcludeCondition()
+    public int GetMatchWinner()
     {
-        return Mode switch
+
+        List<int> PlayerScoresSnapShot = [.. PlayerScores];
+
+        switch (GameMode)
         {
-            GameMode.Timed => (DateTime.UtcNow - CreatedAt).Seconds - _pausedSeconds > (MatchLengthMinutes * 60) - 2,
-            GameMode.MaxReps => false,
-            _ => false,
-        };
+            // If its the timed mode, we check if timer ran out then return the player id with highest score
+            case TimeLimitedGameMode timeLimitedMode:
+                bool timeRanOut = (DateTime.UtcNow - CreatedAt).TotalSeconds - _pausedSeconds >= timeLimitedMode.TimeLimitSeconds;
+                if (timeRanOut)
+                {
+                    int winnerIndex = PlayerScoresSnapShot.IndexOf(PlayerScoresSnapShot.Max());
+                    return UserIds[winnerIndex];
+                }
+                break;
+            // If its the max reps we check if the player with the highest score has reached 30 
+            case MaxRepsGameMode maxRepsMode:
+                bool repsReached = PlayerScoresSnapShot.Max() >= maxRepsMode.MaxReps;
+
+                if (repsReached)
+                {
+                    int winnerIndex = PlayerScoresSnapShot.IndexOf(PlayerScoresSnapShot.Max());
+                    return UserIds[winnerIndex];
+                }
+                break;
+            default:
+                return 0;
+        }
+        return 0;
+
+
     }
 
     public bool ValidateTotalLifespan()
     {
-        Console.WriteLine($"Seconds has passed {(DateTime.UtcNow - CreatedAt).Seconds} out of {_matchMaxLifeTimInMinutes * 60}");
-        Console.WriteLine((DateTime.UtcNow - CreatedAt).Seconds > _matchMaxLifeTimInMinutes * 60);
+        Console.WriteLine($" {(DateTime.UtcNow - CreatedAt).TotalSeconds} Seconds has passed out of {GameMode.MaxLifeTimeMinutes * 60}");
 
 
 
-        return (DateTime.UtcNow - CreatedAt).Seconds < _matchMaxLifeTimInMinutes * 60;
+        return (DateTime.UtcNow - CreatedAt).TotalSeconds < GameMode.MaxLifeTimeMinutes * 60;
     }
 
     public void TickPausedSeconds()
@@ -83,17 +103,17 @@ public class MatchRoom(int roomId, List<int> userIds, GameMode mode, ExerciseTyp
 
         // Console.WriteLine($"Paused seconds: {_pausedSeconds}");
 
-        // Console.WriteLine($"Current active match seconds: {(DateTime.UtcNow - CreatedAt).Seconds - _pausedSeconds}");
+        // Console.WriteLine($"Current active match seconds: {(DateTime.UtcNow - CreatedAt).TotalSeconds - _pausedSeconds}");
 
     }
 
     public bool IsPaused => _state == MatchState.Paused;
 
-    public int WinningUserid()
-    {
-        int index = PlayerScores.IndexOf(PlayerScores.Max());
-        return UserIds[index];
-    }
+    // public int WinningUserid()
+    // {
+    //     int index = PlayerScores.IndexOf(PlayerScores.Max());
+    //     return UserIds[index];
+    // }
 
     public void MarkFinished() => _state = MatchState.Finished;
 

@@ -39,7 +39,7 @@ public class MatchmakingService(GameHubConnectionList hubConnectionList, RoomsLi
             return Result<string>.Error("User is already in a room", ErrorCodes.USER_ALREADY_IN_ROOM);
         }
 
-        _matchmakingQueueList.Enqueue(new(userId, 0.45));
+        _matchmakingQueueList.Enqueue(new(userId, ExerciseType.Pushups, GameModeType.MaxReps, 0.45));
 
 
 

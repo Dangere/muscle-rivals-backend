@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using MuscleRivalsBackend.Enums;
+using MuscleRivalsBackend.Models.DTOs.Game.Modes;
 using MuscleRivalsBackend.Models.Entities;
 using MuscleRivalsBackend.Models.Matchmaking;
 
@@ -18,7 +19,7 @@ public class RoomsList
     /// </summary>
     /// <param name="userIds"></param>
     /// <returns>Returns the id of the room</returns>
-    internal int CreateRoom(List<int> userIds, ExerciseType exercise, GameMode mode)
+    internal int CreateRoom(List<int> userIds, ExerciseType exercise, BaseGameMode mode)
     {
         if (userIds.Count != 2) throw new Exception("Room must have 2 players!");
         // Creates a random id

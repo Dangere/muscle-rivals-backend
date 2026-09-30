@@ -77,13 +77,13 @@ public class MatchmakingBackgroundService(ILogger<MatchmakingBackgroundService> 
     private void MatchPlayersInExercise(List<MatchEnqueue> Enqueues, ExerciseType exercise, CancellationToken stoppingToken)
     {
         // Grouping by game mode type
-        Dictionary<GameMode, List<MatchEnqueue>> gameModesEnqueues = Enqueues.GroupBy(x => x.GameMode).ToDictionary(x => x.Key, x => x.ToList());
+        Dictionary<GameModeType, List<MatchEnqueue>> gameModesEnqueues = Enqueues.GroupBy(x => x.GameMode).ToDictionary(x => x.Key, x => x.ToList());
 
         foreach (var gameModeEnqueues in gameModesEnqueues)
         {
             if (stoppingToken.IsCancellationRequested) return;
 
-            GameMode gameMode = gameModeEnqueues.Key;
+            GameModeType gameMode = gameModeEnqueues.Key;
 
             // Doing a reverse for loop so we start from the top with the highest rating, the loop stops at player index 0 because theres not players below it
             for (int i = gameModeEnqueues.Value.Count - 1; i > 0; i -= 2)

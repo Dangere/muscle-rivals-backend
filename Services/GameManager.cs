@@ -3,6 +3,7 @@ using MuscleRivalsBackend.Data.Lists;
 using MuscleRivalsBackend.Enums;
 using MuscleRivalsBackend.Hubs;
 using MuscleRivalsBackend.Models.DTOs.Game;
+using MuscleRivalsBackend.Models.DTOs.Game.Modes;
 using MuscleRivalsBackend.Models.DTOs.Users;
 using MuscleRivalsBackend.Models.Matchmaking;
 
@@ -21,7 +22,7 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
     /// <summary>
     ///     Creates a match room and starts it
     /// </summary>
-    public async Task StartMatch(List<int> userIds, ExerciseType exercise, GameMode mode)
+    public async Task StartMatch(List<int> userIds, ExerciseType exercise, GameModeType mode)
     {
         if (userIds.Count != 2) throw new Exception("Room must have 2 players!");
         if (!_hubConnectionList.UsersInHub(userIds)) return;
@@ -49,9 +50,16 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
 
 
 
-    private async Task<int> CreateRoom(List<int> userIds, ExerciseType exercise, GameMode mode)
+    private async Task<int> CreateRoom(List<int> userIds, ExerciseType exercise, GameModeType mode)
     {
-        int roomId = _roomsManager.CreateRoom(userIds, exercise, mode);
+        BaseGameMode gameMode = mode switch
+        {
+            GameModeType.TimeLimited => new TimeLimitedGameMode(),
+            GameModeType.MaxReps => new MaxRepsGameMode(exercise),
+            _ => throw new Exception("Invalid game mode"),
+        };
+
+        int roomId = _roomsManager.CreateRoom(userIds, exercise, gameMode);
         List<UserDTO> users;
 
         using (var scope = _scopeFactory.CreateScope())
@@ -63,9 +71,9 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
 
         }
 
-        MatchDTO match = new(roomId, users, DateTime.UtcNow, exercise, mode);
+        MatchDTO match = new(roomId, users, DateTime.UtcNow, exercise, gameMode);
 
-        await _gameHubContext.Clients.Users(userIds.Select(x => x.ToString())).SendAsync("StartMatch", match);
+        _ = _gameHubContext.Clients.Users(userIds.Select(x => x.ToString())).SendAsync("StartMatch", match).ContinueWith(t => _logger.LogError(t.Exception, "Failed to start match {RoomId}", roomId), TaskContinuationOptions.OnlyOnFaulted);
 
         _logger.LogInformation("Starting new match!");
 
@@ -80,10 +88,11 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
     /// </summary>
     /// <param name="roomId"></param>
     /// <param name="reason"></param>
-    private async void EndMatch(int roomId, string reason)
+    private void EndMatch(int roomId, string reason)
     {
 
-        await _gameHubContext.Clients.Users(_roomsManager.GetRoomMembers(roomId).Select(x => x.ToString())).SendAsync("EndMatch", reason);
+        _ = _gameHubContext.Clients.Users(_roomsManager.GetRoomMembers(roomId).Select(x => x.ToString())).SendAsync("EndMatch", reason).ContinueWith(t => _logger.LogError(t.Exception, "Failed to end match {RoomId}", roomId),
+        TaskContinuationOptions.OnlyOnFaulted); ;
         _roomsManager.RemoveRoom(roomId);
         _logger.LogInformation("Match ended! Reason: {Reason}", reason);
 
@@ -97,7 +106,8 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
         _roomsManager.PauseGame(roomId, pause);
         _logger.LogInformation("Game paused: {Pause}", pause);
 
-        await _gameHubContext.Clients.Users(_roomsManager.GetRoomMembers(roomId).Select(x => x.ToString())).SendAsync("PauseGame", pause);
+        _ = _gameHubContext.Clients.Users(_roomsManager.GetRoomMembers(roomId).Select(x => x.ToString())).SendAsync("PauseGame", pause).ContinueWith(t => _logger.LogError(t.Exception, "Failed to pause game {RoomId}", roomId),
+        TaskContinuationOptions.OnlyOnFaulted);
 
     }
 
@@ -110,18 +120,23 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
     /// <param name="action"></param>
     public async void ClientAction(int userId, ClientAction action)
     {
+
+        MatchRoom? room = _roomsManager.UserInRoom(userId);
+
+        if (room == null) return;
+
         switch (action)
         {
             case Enums.ClientAction.CountRep:
-                ClientCountRep(userId);
+                ClientCountRep(room, userId);
                 break;
             case Enums.ClientAction.QuitMatch:
-                ClientDisconnect(userId);
+                ClientDisconnect(room);
                 break;
             case Enums.ClientAction.ReinitializeWebRTC:
                 break;
             case Enums.ClientAction.ConcludeMatch:
-                ClientConcludeMatch(userId);
+                ClientConcludeMatch(room);
                 break;
         }
 
@@ -131,17 +146,15 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
     ///     Counts a rep and returns total reps for that user
     /// </summary>
     /// <param name="userId"></param>
-    private async void ClientCountRep(int userId)
+    private async void ClientCountRep(MatchRoom room, int userId)
     {
-        MatchRoom? room = _roomsManager.UserInRoom(userId);
+        // If the room is not valid, we return
+        if (ValidateMatch(room) == false) return;
 
-
-        if (room == null)
+        if (room.IsFinished)
         {
             return;
         }
-
-        if (ValidateMatch(room) == false) return;
 
         if (room.IsPaused)
         {
@@ -154,45 +167,63 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
 
 
         // Sends the userId and their new score to the clients
-        await _gameHubContext.Clients.Users(userIds.Select(x => x.ToString())).SendAsync("SetRep", userId, newScore);
+        _ = _gameHubContext.Clients.Users(userIds.Select(x => x.ToString())).SendAsync("SetRep", userId, newScore).ContinueWith(t => _logger.LogError(t.Exception, "Failed to set rep for user {UserId}", userId),
+        TaskContinuationOptions.OnlyOnFaulted);
+
+
+        // Sees if the match met the win condition which marks it as finished
+        ClientConcludeMatch(room);
+
     }
     /// <summary>
     ///     Concludes the match after checking a condition based on the game mode, and stores the scores for the players
     ///     For example, gets called when the time is over by the client when the timer runs out
-    ///     it checks the if the match duration is actually over (with accounting to paused duration, + 2 seconds of leeway room) then ends the match
+    ///     it checks the if the match duration is actually over (with accounting to paused duration) then ends the match
+    ///     it also gets called on every user action to check if the match is over
     /// </summary>
-    private async void ClientConcludeMatch(int userId)
+    private bool ClientConcludeMatch(MatchRoom room)
     {
-        MatchRoom? room = _roomsManager.UserInRoom(userId);
 
-
-        // If the room doesn't exist or the duration isn't over, return
-        if (room == null)
-        {
-            return;
-        }
-
+        int winnerId;
         // Making sure one thread can conclude the match
         lock (room)
         {
-            // If we still within active timer, we return
-            // If the room was already marked as finished, we return
-            if (room.ValidateMatchConcludeCondition() == true || room.IsFinished)
-                return;
+            // Getting the winner and validating the win condition
+            winnerId = room.GetMatchWinner();
+            // If we cant validate the win condition yet, we return is not finished
+            if (winnerId == 0)
+                return false;
+
+            // If the room was already marked as finished, we return match is concluded
+            if (room.IsFinished)
+                return true;
 
             room.MarkFinished();
 
         }
         // TODO: Store score for individual players
 
-        // The id of the winning user
-        int winnerId = room.WinningUserid();
+        _logger.LogInformation("Match concluded! Winner: {WinnerId}", winnerId);
+
 
         // Sends the winnerId to the clients
         List<int> userIds = room.UserIds.ToList();
-        await _gameHubContext.Clients.Users(userIds.Select(x => x.ToString())).SendAsync("MatchConcluded", winnerId);
+        _ = _gameHubContext.Clients.Users(userIds.Select(x => x.ToString())).SendAsync("MatchConcluded", winnerId).ContinueWith(t => _logger.LogError(t.Exception, "Failed to notify match conclusion for room {RoomId}", room.RoomId),
+        TaskContinuationOptions.OnlyOnFaulted); ;
 
         _roomsManager.RemoveRoom(room.RoomId);
+        return true;
+    }
+
+
+    /// <summary>
+    ///     Client disconnected so remove it from the room and end it if they're in any
+    /// </summary>
+    /// <param name="room">In memory room instance</param>
+    public void ClientDisconnect(MatchRoom room)
+    {
+        EndMatch(room.RoomId, "One of the players disconnected");
+
     }
 
 
@@ -200,15 +231,11 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
     ///     Client disconnected so remove it from the room and end it if they're in any
     /// </summary>
     /// <param name="userId"></param>
-    public async void ClientDisconnect(int userId)
+    public void ClientDisconnect(int userId)
     {
 
         MatchRoom? room = _roomsManager.UserInRoom(userId);
-        if (room == null)
-        {
-            return;
-        }
-
+        if (room == null) return;
         EndMatch(room.RoomId, "One of the players disconnected");
 
     }
