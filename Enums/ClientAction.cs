@@ -4,7 +4,6 @@ public enum ClientAction
 {
     CountRep,
     QuitMatch,
-    ConcludeMatch,
-    ReinitializeWebRTC
+    ConcludeMatch
 
 }

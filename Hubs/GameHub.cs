@@ -17,7 +17,7 @@ public class GameHub(ILogger<GameHub> logger, GameHubConnectionList inMemoryConn
     private readonly ILogger<GameHub> _logger = logger;
     private readonly GameHubConnectionList _inMemoryConnectionManager = inMemoryConnectionManager;
 
-    private readonly Action<int, ClientAction> _playerActionDelegate = gameManager.ClientAction;
+    private readonly Action<int, ClientAction> _playerActionDelegate = gameManager.HandleClientAction;
     internal void OnUserDisconnect(int userId)
     {
         gameManager.ClientDisconnect(userId);
@@ -77,10 +77,11 @@ public class GameHub(ILogger<GameHub> logger, GameHubConnectionList inMemoryConn
     ///     It shares ICE candidate and SDP information between the clients in two way trips
     /// </summary>
     /// <returns></returns>
-    public async Task ReinitializeWebRTC()
+    public async Task SendSignaling(string data)
     {
         int userId = int.Parse(Context.User!.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        _playerActionDelegate(userId, ClientAction.ReinitializeWebRTC);
+
+        gameManager.HandleClientSignaling(userId, data);
 
     }
 

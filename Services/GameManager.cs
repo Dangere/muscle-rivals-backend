@@ -118,7 +118,7 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
     /// </summary>
     /// <param name="userId"></param>
     /// <param name="action"></param>
-    public async void ClientAction(int userId, ClientAction action)
+    public async void HandleClientAction(int userId, ClientAction action)
     {
 
         MatchRoom? room = _roomsManager.UserInRoom(userId);
@@ -127,19 +127,34 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
 
         switch (action)
         {
-            case Enums.ClientAction.CountRep:
+            case ClientAction.CountRep:
                 ClientCountRep(room, userId);
                 break;
-            case Enums.ClientAction.QuitMatch:
+            case ClientAction.QuitMatch:
                 ClientDisconnect(room);
                 break;
-            case Enums.ClientAction.ReinitializeWebRTC:
-                break;
-            case Enums.ClientAction.ConcludeMatch:
+
+            case ClientAction.ConcludeMatch:
                 ClientConcludeMatch(room);
                 break;
         }
+    }
 
+    /// <summary>
+    ///    Client invoked signaling to other users for WebRTC
+    /// </summary>
+    /// <param name="userId"></param>
+    public async void HandleClientSignaling(int userId, string data)
+    {
+
+        MatchRoom? room = _roomsManager.UserInRoom(userId);
+
+        if (room == null) return;
+
+        List<int> userIds = room.UserIds.ToList();
+        Console.WriteLine(data);
+        _ = _gameHubContext.Clients.Users(userIds.Where(x => x != userId).Select(x => x.ToString())).SendAsync("onSignalingReceived", data).ContinueWith(t => _logger.LogError(t.Exception, "Failed to send signaling {RoomId}", room.RoomId),
+    TaskContinuationOptions.OnlyOnFaulted);
     }
 
     /// <summary>
@@ -209,7 +224,7 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
         // Sends the winnerId to the clients
         List<int> userIds = room.UserIds.ToList();
         _ = _gameHubContext.Clients.Users(userIds.Select(x => x.ToString())).SendAsync("MatchConcluded", winnerId).ContinueWith(t => _logger.LogError(t.Exception, "Failed to notify match conclusion for room {RoomId}", room.RoomId),
-        TaskContinuationOptions.OnlyOnFaulted); ;
+        TaskContinuationOptions.OnlyOnFaulted);
 
         _roomsManager.RemoveRoom(room.RoomId);
         return true;
@@ -240,56 +255,56 @@ public class GameManager(RoomsList roomsManager, GameHubConnectionList hubConnec
 
     }
 
-    /// <summary>
-    ///     Initializes WebRTC between clients in the room, so far only support for two clients
-    /// </summary>
-    /// <param name="userIds"></param>
-    /// <returns></returns>
-    private async Task ClientInitializeWebRTC(int roomId, CancellationToken cancellationToken)
-    {
-        List<int> playerIds = _roomsManager.GetRoomMembers(roomId);
-        if (playerIds.Count != 2)
-        {
-            EndMatch(roomId, "Not enough players");
-            return;
-        }
+    // /// <summary>
+    // ///     Initializes WebRTC between clients in the room, so far only support for two clients
+    // /// </summary>
+    // /// <param name="userIds"></param>
+    // /// <returns></returns>
+    // private async Task ClientInitializeWebRTC(int roomId, CancellationToken cancellationToken)
+    // {
+    //     List<int> playerIds = _roomsManager.GetRoomMembers(roomId);
+    //     if (playerIds.Count != 2)
+    //     {
+    //         EndMatch(roomId, "Not enough players");
+    //         return;
+    //     }
 
 
-        // Get first user offer
-        string? firstPlayerConnectionId = _hubConnectionList.GetConnection(playerIds[0]);
-        if (firstPlayerConnectionId == null)
-        {
-            EndMatch(roomId, "First player lost connection");
-            return;
-        }
+    //     // Get first user offer
+    //     string? firstPlayerConnectionId = _hubConnectionList.GetConnection(playerIds[0]);
+    //     if (firstPlayerConnectionId == null)
+    //     {
+    //         EndMatch(roomId, "First player lost connection");
+    //         return;
+    //     }
 
-        try
-        {
+    //     try
+    //     {
 
-            string offer = await _gameHubContext.Clients.Client(firstPlayerConnectionId).InvokeAsync<string>("GetWebRTCOffer", cancellationToken);
+    //         string offer = await _gameHubContext.Clients.Client(firstPlayerConnectionId).InvokeAsync<string>("GetWebRTCOffer", cancellationToken);
 
-            // Get second user answer
-            string? secondPlayerConnectionId = _hubConnectionList.GetConnection(playerIds[1]);
-            if (secondPlayerConnectionId == null)
-            {
-                EndMatch(roomId, "Second player lost connection");
-                return;
-            }
-            string answer = await _gameHubContext.Clients.Client(secondPlayerConnectionId).InvokeAsync<string>("GetWebRTCAnswer", offer, cancellationToken);
+    //         // Get second user answer
+    //         string? secondPlayerConnectionId = _hubConnectionList.GetConnection(playerIds[1]);
+    //         if (secondPlayerConnectionId == null)
+    //         {
+    //             EndMatch(roomId, "Second player lost connection");
+    //             return;
+    //         }
+    //         string answer = await _gameHubContext.Clients.Client(secondPlayerConnectionId).InvokeAsync<string>("GetWebRTCAnswer", offer, cancellationToken);
 
 
-            // Sending back answer to first player
-            await _gameHubContext.Clients.Client(firstPlayerConnectionId).SendAsync("SetWebRTCAnswer", answer, cancellationToken);
-        }
-        catch (Exception ex)
-        {
+    //         // Sending back answer to first player
+    //         await _gameHubContext.Clients.Client(firstPlayerConnectionId).SendAsync("SetWebRTCAnswer", answer, cancellationToken);
+    //     }
+    //     catch (Exception ex)
+    //     {
 
-            EndMatch(roomId, "Failed to initialize WebRTC");
-            _logger.LogError("Failed to initialize WebRTC for room {RoomId} : {Exception}", roomId, ex);
-            throw;
-        }
+    //         EndMatch(roomId, "Failed to initialize WebRTC");
+    //         _logger.LogError("Failed to initialize WebRTC for room {RoomId} : {Exception}", roomId, ex);
+    //         throw;
+    //     }
 
-    }
+    // }
 
 
     /// <summary>
